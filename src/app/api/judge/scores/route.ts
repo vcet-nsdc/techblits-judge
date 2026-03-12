@@ -1,21 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import mongoose from 'mongoose';
+import { connectDB } from '@/lib/mongodb';
 import { Score } from '@/models/Score';
 import { Team } from '@/models/Team';
 import { Judge, JudgeRole } from '@/models/Judge';
 import { Lab } from '@/models/Lab';
 import { Competition } from '@/models/Competition';
 import { CompetitionRound, VenueType } from '@/types/competition';
-import { verifyToken } from '@/lib/middleware/auth';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 import { LeaderboardService } from '@/lib/leaderboard';
 import { competitionCacheService } from '@/lib/competition-cache';
+
+function toObjectIdString(value: unknown): string {
+  if (!value) {
+    return '';
+  }
+
+  if (typeof value === 'string') {
+    return value;
+  }
+
+  if (value instanceof mongoose.Types.ObjectId) {
+    return value.toString();
+  }
+
+  if (typeof value === 'object' && value !== null) {
+    const withId = value as { _id?: unknown; toString?: () => string };
+    if (withId._id) {
+      return toObjectIdString(withId._id);
+    }
+    if (typeof withId.toString === 'function') {
+      return withId.toString();
+    }
+  }
+
+  return '';
+}
 
 const scoreSchema = z.object({
   teamId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
   marks: z.number().min(0).max(100),
   feedback: z.string().max(1000).optional(),
-  round: z.enum(['lab_round', 'final_round', 'finals']),
+  round: z.enum(['lab_round', 'finals']),
   criteria: z.array(z.object({
     name: z.string().min(1),
     marks: z.number().min(0).max(100)
@@ -24,7 +51,8 @@ const scoreSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {
@@ -49,7 +77,8 @@ export async function POST(request: NextRequest) {
 
     // Check if round is active
     const competition = await Competition.findOne({ isActive: true });
-    if (competition?.currentRound !== round) {
+    const activeRound = competition?.currentRound ?? CompetitionRound.LAB_ROUND;
+    if (activeRound !== round) {
       return NextResponse.json({ error: 'Round is not currently active' }, { status: 400 });
     }
 
@@ -61,10 +90,12 @@ export async function POST(request: NextRequest) {
       if (judge.role === JudgeRole.SEMINAR_HALL) {
         return NextResponse.json({ error: 'Seminar Hall judges cannot score in lab round' }, { status: 403 });
       }
-      if (team.labId.toString() !== judge.assignedLabId.toString()) {
+      const teamLabId = toObjectIdString(team.labId);
+      const judgeLabId = toObjectIdString(judge.assignedLabId);
+      if (!teamLabId || !judgeLabId || teamLabId !== judgeLabId) {
         return NextResponse.json({ error: 'Judge can only score teams in assigned lab' }, { status: 403 });
       }
-      venueId = judge.assignedLabId as mongoose.Types.ObjectId;
+      venueId = new mongoose.Types.ObjectId(judgeLabId);
     } else if (round === 'finals') {
       // Finals validation: must be seminar hall judge
       if (judge.role !== JudgeRole.SEMINAR_HALL) {
@@ -81,22 +112,21 @@ export async function POST(request: NextRequest) {
       if (!seminarHall) {
         return NextResponse.json({ error: 'Seminar Hall not configured' }, { status: 500 });
       }
-      if (team.finalVenueId?.toString() !== seminarHall._id.toString()) {
+      const teamFinalVenueId = toObjectIdString(team.finalVenueId);
+      if (teamFinalVenueId !== seminarHall._id.toString()) {
         return NextResponse.json({ error: 'Team is not assigned to Seminar Hall' }, { status: 403 });
       }
 
       // Judge must be assigned to this domain
-      if (!judge.assignedDomains.some((d: mongoose.Types.ObjectId) => d.toString() === team.domainId.toString())) {
+      const teamDomainId = toObjectIdString(team.domainId);
+      const assignedDomainIds = judge.assignedDomains.map((domain) => toObjectIdString(domain));
+      if (!teamDomainId || !assignedDomainIds.includes(teamDomainId)) {
         return NextResponse.json({ error: 'Judge not assigned to this domain' }, { status: 403 });
       }
 
       venueId = seminarHall._id as mongoose.Types.ObjectId;
     } else {
-      // final_round (legacy)
-      if (!judge.assignedDomains.some((domain: mongoose.Types.ObjectId) => domain.toString() === team.domainId.toString())) {
-        return NextResponse.json({ error: 'Judge not assigned to this domain' }, { status: 403 });
-      }
-      venueId = judge.assignedLabId as mongoose.Types.ObjectId;
+      return NextResponse.json({ error: 'Invalid round value' }, { status: 400 });
     }
 
     // Check if score already exists for this judge-team-domain-round combination
@@ -110,6 +140,8 @@ export async function POST(request: NextRequest) {
     if (existingScore) {
       existingScore.marks = marks;
       existingScore.feedback = feedback;
+      existingScore.venueId = venueId;
+      existingScore.submittedAt = new Date();
       if (criteria) existingScore.criteria = criteria;
       await existingScore.save();
     } else {
@@ -121,7 +153,8 @@ export async function POST(request: NextRequest) {
         round,
         marks,
         feedback,
-        criteria
+        criteria,
+        submittedAt: new Date()
       });
       await score.save();
     }
@@ -139,6 +172,14 @@ export async function POST(request: NextRequest) {
     } else {
       await LeaderboardService.invalidateLeaderboard(team.domainId.toString(), round as CompetitionRound);
       leaderboard = await LeaderboardService.getLeaderboard(team.domainId.toString(), round as CompetitionRound);
+    }
+
+    const updatedEntry = leaderboard.find((entry) => entry.teamId === teamId);
+    if (updatedEntry) {
+      await Team.findByIdAndUpdate(teamId, {
+        currentScore: updatedEntry.totalScore,
+        ...(round === CompetitionRound.FINALS ? { finalScore: updatedEntry.totalScore } : {}),
+      });
     }
 
     // Queue score update for real-time processing
@@ -174,7 +215,8 @@ export async function POST(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {
@@ -196,12 +238,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Validate judge has access to this domain
-    const domains: string[] = judge.assignedDomains.map((domain: mongoose.Types.ObjectId) => domain.toString());
+    const domains = judge.assignedDomains.map((domain) => toObjectIdString(domain)).filter(Boolean);
     if (!domains.includes(domainId)) {
       return NextResponse.json({ error: 'Judge not assigned to this domain' }, { status: 403 });
     }
 
-    const leaderboard = await LeaderboardService.getLeaderboard(domainId, round);
+    const leaderboard = round === CompetitionRound.FINALS
+      ? await LeaderboardService.getFinalsLeaderboard(domainId)
+      : await LeaderboardService.getLeaderboard(domainId, round);
 
     return NextResponse.json({ leaderboard });
   } catch (error) {

@@ -2,7 +2,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface ITeamMember {
   name: string;
-  email: string;
+  email?: string;
   role: 'leader' | 'member';
   attended?: boolean;
   attendance?: Record<string, boolean>;
@@ -25,7 +25,7 @@ export interface ITeam extends Document {
 
 const TeamMemberSchema: Schema = new Schema({
   name: { type: String, required: true },
-  email: { type: String, required: true },
+  email: { type: String, default: '' },
   role: { type: String, enum: ['leader', 'member'], default: 'member' },
   attended: { type: Boolean, default: false },
   attendance: { type: Map, of: Boolean, default: undefined }

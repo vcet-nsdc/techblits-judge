@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import mongoose from 'mongoose';
+import { connectDB } from '@/lib/mongodb';
 import { Score } from '@/models/Score';
 import { Team } from '@/models/Team';
 import { Judge, JudgeRole } from '@/models/Judge';
 import { Lab } from '@/models/Lab';
 import { Competition } from '@/models/Competition';
 import { VenueType } from '@/types/competition';
-import { verifyToken } from '@/lib/middleware/auth';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 import { LeaderboardService } from '@/lib/leaderboard';
 import { competitionCacheService } from '@/lib/competition-cache';
 
@@ -27,7 +28,8 @@ const finalsScoreSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {
@@ -92,6 +94,8 @@ export async function POST(request: NextRequest) {
       existingScore.marks = marks;
       if (criteria) existingScore.criteria = criteria;
       existingScore.feedback = feedback;
+      existingScore.venueId = seminarHall._id;
+      existingScore.submittedAt = new Date();
       await existingScore.save();
     } else {
       await new Score({
@@ -102,7 +106,8 @@ export async function POST(request: NextRequest) {
         round: 'finals',
         marks,
         criteria,
-        feedback
+        feedback,
+        submittedAt: new Date()
       }).save();
     }
 
@@ -110,6 +115,13 @@ export async function POST(request: NextRequest) {
     const domainId = team.domainId.toString();
     await LeaderboardService.invalidateFinalsLeaderboard(domainId);
     const leaderboard = await LeaderboardService.getFinalsLeaderboard(domainId);
+    const updatedEntry = leaderboard.find((entry) => entry.teamId === teamId);
+    if (updatedEntry) {
+      await Team.findByIdAndUpdate(team._id, {
+        currentScore: updatedEntry.totalScore,
+        finalScore: updatedEntry.totalScore,
+      });
+    }
 
     // Queue real-time update
     await competitionCacheService.queueScoreUpdate(
@@ -142,7 +154,8 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {

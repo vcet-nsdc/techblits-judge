@@ -31,11 +31,15 @@ export class WebSocketHandler {
     join: (room: string) => void;
     emit: (event: string, data: unknown) => void;
   }, domainId: string, round: CompetitionRound): void {
-    const room = `leaderboard_${domainId}_${round}`;
+    const room = `leaderboard:${domainId}:${round}`;
     socket.join(room);
     
     // Send current leaderboard immediately
-    LeaderboardService.getLeaderboard(domainId, round).then(leaderboard => {
+    const leaderboardPromise = round === CompetitionRound.FINALS
+      ? LeaderboardService.getFinalsLeaderboard(domainId)
+      : LeaderboardService.getLeaderboard(domainId, round);
+
+    leaderboardPromise.then(leaderboard => {
       socket.emit('leaderboard_update', { domainId, round, leaderboard });
     });
   }
@@ -49,7 +53,7 @@ export class WebSocketHandler {
     round: CompetitionRound;
     score: unknown;
   }): void {
-    const room = `leaderboard_${data.domainId}_${data.round}`;
+    const room = `leaderboard:${data.domainId}:${data.round}`;
     socket.to(room).emit('score_submitted', {
       domainId: data.domainId,
       round: data.round,
@@ -77,17 +81,19 @@ export class WebSocketHandler {
       if (!domains) return;
 
       for (const domain of domains) {
-        for (const round of [CompetitionRound.LAB_ROUND, CompetitionRound.FINAL_ROUND]) {
+        for (const round of [CompetitionRound.LAB_ROUND, CompetitionRound.FINALS]) {
           const updates = await competitionCacheService.getQueuedUpdates(domain._id.toString(), round);
           
           for (const update of updates) {
             try {
               // Process the score update
-              const leaderboard = await LeaderboardService.getLeaderboard(domain._id.toString(), round);
+              const leaderboard = round === CompetitionRound.FINALS
+                ? await LeaderboardService.getFinalsLeaderboard(domain._id.toString())
+                : await LeaderboardService.getLeaderboard(domain._id.toString(), round);
               
               // Broadcast to all connected clients
               if (socketServer.io) {
-                socketServer.io.to(`leaderboard_${domain._id.toString()}_${round}`).emit('leaderboard_update', {
+                socketServer.io.to(`leaderboard:${domain._id.toString()}:${round}`).emit('leaderboard_update', {
                   domainId: domain._id.toString(),
                   round,
                   leaderboard,

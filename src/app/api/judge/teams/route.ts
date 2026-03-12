@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
 import { Team } from '@/models/Team';
 import { Judge, JudgeRole } from '@/models/Judge';
+import { Lab } from '@/models/Lab';
 import { Competition } from '@/models/Competition';
-import { CompetitionRound } from '@/types/competition';
-import { verifyToken } from '@/lib/middleware/auth';
+import { CompetitionRound, VenueType } from '@/types/competition';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 
 export async function GET(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {
@@ -26,28 +29,31 @@ export async function GET(request: NextRequest) {
     let teams;
 
     if (judge.role === JudgeRole.SEMINAR_HALL) {
-      // Seminar Hall judge: show only qualifying teams from assigned domains
+      const seminarHall = competition?.seminarHallId
+        ? await Lab.findById(competition.seminarHallId)
+        : await Lab.findOne({ type: VenueType.SEMINAR_HALL });
+
+      if (!seminarHall) {
+        return NextResponse.json({
+          teams: [],
+          currentRound,
+          judgeLab: judge.assignedLabId,
+          assignedDomains: judge.assignedDomains,
+          judgeRole: judge.role,
+        });
+      }
+
       teams = await Team.find({
         qualifiedForFinals: true,
+        finalVenueId: seminarHall._id,
         domainId: { $in: judge.assignedDomains },
         isActive: true
       }).populate('labId domainId');
-    } else if (currentRound === CompetitionRound.LAB_ROUND) {
-      // Lab round: Show only teams in judge's assigned lab
+    } else {
       teams = await Team.find({
         labId: judge.assignedLabId,
         isActive: true
       }).populate('labId domainId');
-    } else {
-      // Final round (legacy): Show only top 5 teams per domain for judge's assigned domains
-      const { LeaderboardService } = await import('@/lib/leaderboard');
-      const topTeams = await LeaderboardService.getTopTeamsPerDomain(5);
-      
-      teams = topTeams.filter(team => 
-        judge.assignedDomains.some((domainId: any) => 
-          domainId.toString() === team.domainId.toString()
-        )
-      );
     }
 
     return NextResponse.json({

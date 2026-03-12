@@ -56,12 +56,16 @@ export class LeaderboardService {
         return [];
       }
 
+      const competition = await Competition.findOne({ isActive: true });
+      const finalsStartTime = competition?.finalsStartTime || new Date(0);
+
       const scores = await Score.aggregate([
         {
           $match: {
             domainId: new mongoose.Types.ObjectId(domainId),
             round: 'finals',
-            venueId: seminarHall._id
+            venueId: seminarHall._id,
+            submittedAt: { $gte: finalsStartTime }
           }
         },
         {

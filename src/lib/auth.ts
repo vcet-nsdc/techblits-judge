@@ -2,9 +2,12 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import { Judge } from '@/models/Judge';
+import '@/models/Domain';
+import '@/models/Lab';
 import { JudgeRole, VenueType, JWTPayload } from '@/types/competition';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'your-refresh-secret-key';
 const JWT_EXPIRE = '1h';
 const REFRESH_TOKEN_EXPIRE = '7d';
 
@@ -41,7 +44,18 @@ export class AuthService {
       // Update last login
       await Judge.findByIdAndUpdate(judge._id, { lastLoginAt: new Date() });
 
-      const token = this.generateToken(judge);
+      // Extract raw ObjectId values for token (populated fields are full docs)
+      const rawLabId = judge.assignedLabId?._id ?? judge.assignedLabId;
+      const rawDomainIds = judge.assignedDomains?.map((d: mongoose.Types.ObjectId | { _id: mongoose.Types.ObjectId }) => 
+        typeof d === 'object' && '_id' in d ? d._id : d
+      );
+
+      const token = this.generateToken({
+        _id: judge._id,
+        role: judge.role,
+        assignedLabId: rawLabId as mongoose.Types.ObjectId | undefined,
+        assignedDomains: rawDomainIds as mongoose.Types.ObjectId[] | undefined,
+      });
       const refreshToken = this.generateRefreshToken(judge);
 
       return {
@@ -51,8 +65,8 @@ export class AuthService {
           name: judge.name,
           email: judge.email,
           role: judge.role,
-          assignedLabId: judge.assignedLabId?.toString(),
-          assignedDomains: judge.assignedDomains?.map((id: mongoose.Types.ObjectId) => id.toString())
+          assignedLabId: rawLabId?.toString(),
+          assignedDomains: rawDomainIds?.map((id: mongoose.Types.ObjectId) => id.toString())
         },
         token,
         refreshToken
@@ -76,8 +90,6 @@ export class AuthService {
       assignedDomains: judge.assignedDomains?.map((id: mongoose.Types.ObjectId) => id.toString()),
       judgeRole: judge.role,
       isSeminarHallJudge: judge.role === JudgeRole.SEMINAR_HALL,
-      exp: Math.floor(Date.now() / 1000) + (60 * 60), // 1 hour
-      iat: Math.floor(Date.now() / 1000)
     };
 
     return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRE });
@@ -89,7 +101,7 @@ export class AuthService {
       type: 'refresh'
     };
 
-    return jwt.sign(payload, JWT_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRE });
+    return jwt.sign(payload, JWT_REFRESH_SECRET, { expiresIn: REFRESH_TOKEN_EXPIRE });
   }
 
   static verifyToken(token: string): JWTPayload | null {
@@ -102,7 +114,7 @@ export class AuthService {
 
   static verifyRefreshToken(token: string): { userId: string; type: string } | null {
     try {
-      return jwt.verify(token, JWT_SECRET) as { userId: string; type: string };
+      return jwt.verify(token, JWT_REFRESH_SECRET) as { userId: string; type: string };
     } catch (error) {
       return null;
     }

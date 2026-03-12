@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { clearAllServerCaches, clearCachePattern, cacheBusters } from '@/lib/cache-clear';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 
 export async function POST(request: NextRequest) {
   try {
+    const token = extractTokenFromRequest(request);
+    const user = verifyToken(token ?? undefined);
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { pattern, bustBrowser } = body;
 

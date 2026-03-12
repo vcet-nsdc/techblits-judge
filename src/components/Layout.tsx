@@ -3,13 +3,10 @@ import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Home, Swords, Trophy, Menu, X } from 'lucide-react';
-import { getJudgeId, useJudgeLogout } from '@/hooks/use-auth';
+import { Home, Swords, Trophy, Menu, X } from 'lucide-react';
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const judgeId = getJudgeId();
-  const { mutate: logout } = useJudgeLogout();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   // Close mobile menu on route change
@@ -35,27 +32,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <Link href="/" className="font-heading text-xl hover:text-[#ff1a1a] transition-colors flex items-center gap-2">
               <Home size={20} /> HOME
             </Link>
-            <Link href="/judge/leaderboard" className="font-heading text-xl hover:text-[#ff1a1a] transition-colors flex items-center gap-2">
-              <Trophy size={20} /> STANDINGS
+            <Link href="/leaderboard" className="font-heading text-xl hover:text-[#ff1a1a] transition-colors flex items-center gap-2">
+              <Trophy size={20} /> LEADERBOARD
             </Link>
-            
-            {judgeId ? (
-              <div className="flex items-center gap-4 ml-4 pl-4 border-l-4 border-black">
-                <Link href="/judge/dashboard" className="font-heading text-xl text-[#ff1a1a] flex items-center gap-2">
-                  <Swords size={20} /> PORTAL
-                </Link>
-                <button 
-                  onClick={() => logout()} 
-                  className="font-heading text-xl hover:text-[#ff1a1a] flex items-center gap-2"
-                >
-                  <LogOut size={20} /> OUT
-                </button>
-              </div>
-            ) : (
-              <Link href="/judge-portal" className="font-heading text-xl bg-black text-white px-4 py-2 hover:bg-[#ff1a1a] transition-colors border-2 border-black rounded flex items-center gap-2">
-                <Swords size={20} /> JUDGE LOGIN
-              </Link>
-            )}
+            <Link href="/standings" className="font-heading text-xl hover:text-[#ff1a1a] transition-colors flex items-center gap-2">
+              <Swords size={20} /> STANDINGS
+            </Link>
           </nav>
 
           {/* Mobile hamburger button */}
@@ -82,29 +64,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Link href="/" className="font-heading text-lg hover:text-[#ff1a1a] transition-colors flex items-center gap-2 p-2">
                   <Home size={18} /> HOME
                 </Link>
-                <Link href="/judge/leaderboard" className="font-heading text-lg hover:text-[#ff1a1a] transition-colors flex items-center gap-2 p-2">
-                  <Trophy size={18} /> STANDINGS
+                <Link href="/leaderboard" className="font-heading text-lg hover:text-[#ff1a1a] transition-colors flex items-center gap-2 p-2">
+                  <Trophy size={18} /> LEADERBOARD
                 </Link>
-                
-                {judgeId ? (
-                  <>
-                    <div className="border-t-2 border-black pt-3">
-                      <Link href="/judge/dashboard" className="font-heading text-lg text-[#ff1a1a] flex items-center gap-2 p-2">
-                        <Swords size={18} /> PORTAL
-                      </Link>
-                      <button 
-                        onClick={() => logout()} 
-                        className="font-heading text-lg hover:text-[#ff1a1a] flex items-center gap-2 p-2 w-full text-left"
-                      >
-                        <LogOut size={18} /> LOGOUT
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  <Link href="/judge-portal" className="font-heading text-lg bg-black text-white px-4 py-3 hover:bg-[#ff1a1a] transition-colors border-2 border-black rounded flex items-center gap-2 justify-center">
-                    <Swords size={18} /> JUDGE LOGIN
-                  </Link>
-                )}
+                <Link href="/standings" className="font-heading text-lg hover:text-[#ff1a1a] transition-colors flex items-center gap-2 p-2">
+                  <Swords size={18} /> STANDINGS
+                </Link>
               </div>
             </motion.nav>
           )}
@@ -125,7 +90,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <footer className="border-t-4 border-black bg-black text-white py-6 md:py-8 mt-8 md:mt-12">
         <div className="max-w-7xl mx-auto px-4 text-center">
-          <p className="font-heading text-lg md:text-2xl">© {new Date().getFullYear()} BATTLEHACK INITIATIVE</p>
+          <p className="font-heading text-lg md:text-2xl">© {new Date().getFullYear()} TECHBLITZ INITIATIVE</p>
           <p className="font-body mt-2 text-gray-400 font-bold text-sm md:text-base">ALL SYSTEMS OPERATIONAL // PREPARE FOR BATTLE</p>
         </div>
       </footer>

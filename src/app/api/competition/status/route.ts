@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
 import { Competition } from '@/models/Competition';
 import { CompetitionRound } from '@/types/competition';
 
 export async function GET(request: NextRequest) {
   try {
+    await connectDB();
     const competition = await Competition.findOne({ isActive: true });
     
     if (!competition) {
@@ -16,10 +18,11 @@ export async function GET(request: NextRequest) {
       id: competition._id,
       name: competition.name,
       currentRound: competition.currentRound,
+      qualifiedTeamsPerDomain: competition.qualifiedTeamsPerDomain,
       labRoundStartTime: competition.labRoundStartTime,
       labRoundEndTime: competition.labRoundEndTime,
-      finalRoundStartTime: competition.finalRoundStartTime,
-      finalRoundEndTime: competition.finalRoundEndTime,
+      finalsStartTime: competition.finalsStartTime,
+      finalsEndTime: competition.finalsEndTime,
       isActive: competition.isActive
     });
   } catch (error) {

@@ -125,7 +125,7 @@ export class CompetitionCacheService {
   }
 
   async clearAllLeaderboards(): Promise<void> {
-    await this.invalidatePattern('leaderboard:.*');
+    await this.invalidatePattern('leaderboard:*');
   }
 
   async clearAllSessions(): Promise<void> {

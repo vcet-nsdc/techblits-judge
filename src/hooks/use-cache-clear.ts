@@ -25,19 +25,21 @@ export function useCacheClear() {
     setError(null);
 
     try {
+      const token = typeof window === 'undefined' ? null : localStorage.getItem('adminToken');
       const response = await fetch('/api/admin/cache/clear', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify(options)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to clear cache');
+        throw new Error(errorData.error || errorData.message || 'Failed to clear cache');
       }
 
       const result = await response.json();

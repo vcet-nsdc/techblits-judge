@@ -26,10 +26,11 @@ export default function JudgeDashboard() {
       try {
         const response = await fetch('/api/labs');
         const data = await response.json();
+        const labArray = data.labs || data;
         
         // Map labs to comic theme names and colors
         const labColors = ['!bg-white text-black', '!bg-black text-white', '!bg-white text-[#ff1a1a]', '!bg-black text-[#ff1a1a]', '!bg-[#ff1a1a] text-white'];
-        const mappedLabs = data.map((lab: { name: string }, index: number) => ({
+        const mappedLabs = labArray.map((lab: { name: string }, index: number) => ({
           id: lab.name,
           name: `SECTOR ${lab.name}`,
           color: labColors[index % labColors.length]

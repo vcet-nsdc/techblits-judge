@@ -1,12 +1,10 @@
 export enum CompetitionRound {
   LAB_ROUND = 'lab_round',
-  FINAL_ROUND = 'final_round',
   FINALS = 'finals'
 }
 
 export enum JudgeRole {
   LAB_ROUND = 'lab_round',
-  FINAL_ROUND = 'final_round',
   SEMINAR_HALL = 'seminar_hall',
   ADMIN = 'admin'
 }
@@ -50,6 +48,6 @@ export interface JWTPayload {
   assignedDomains?: string[];
   judgeRole?: string;
   isSeminarHallJudge?: boolean;
-  exp: number;
-  iat: number;
+  exp?: number;
+  iat?: number;
 }

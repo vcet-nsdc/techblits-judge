@@ -2,7 +2,6 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export enum JudgeRole {
   LAB_ROUND = 'lab_round',
-  FINAL_ROUND = 'final_round',
   SEMINAR_HALL = 'seminar_hall',
   ADMIN = 'admin'
 }
@@ -34,7 +33,6 @@ const JudgeSchema: Schema = new Schema({
 });
 
 // Indexes for performance
-JudgeSchema.index({ email: 1 });
 JudgeSchema.index({ assignedLabId: 1 });
 JudgeSchema.index({ role: 1 });
 

@@ -30,7 +30,18 @@ interface LeaderboardEntry {
   judgeCount?: number;
 }
 
-const CRITERIA = ['Innovation', 'Technical Depth', 'Presentation', 'Practical Impact', 'UI/UX'];
+const CRITERIA = [
+  { id: 'innovation', label: 'Innovation', description: 'Originality and creativity' },
+  { id: 'technicalDepth', label: 'Technical Depth', description: 'Architecture, code quality' },
+  { id: 'presentation', label: 'Presentation', description: 'Pitch and demo' },
+  { id: 'practicalImpact', label: 'Practical Impact', description: 'Solves real problems' },
+  { id: 'uiUx', label: 'UI/UX', description: 'Design, usability, polish' },
+] as const;
+
+const clampScore = (value: number) => {
+  if (Number.isNaN(value)) return 0;
+  return Math.min(10, Math.max(0, value));
+};
 
 export default function SeminarHallDashboard() {
   const router = useRouter();
@@ -47,7 +58,13 @@ export default function SeminarHallDashboard() {
 
   const fetchLeaderboard = React.useCallback(async (domainId: string) => {
     try {
-      const res = await fetch(`/api/leaderboards/finals/${domainId}`);
+      const token = localStorage.getItem('judgeToken');
+      const headers: Record<string, string> = {};
+      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const res = await fetch(`/api/judge/seminar-hall/leaderboard?domainId=${encodeURIComponent(domainId)}`, {
+        headers,
+      });
       if (!res.ok) return;
       const data = await res.json();
       setLeaderboards(prev => ({ ...prev, [domainId]: data.leaderboard || [] }));
@@ -95,14 +112,19 @@ export default function SeminarHallDashboard() {
   const openScoreForm = (teamId: string) => {
     setScoringTeam(teamId);
     const initial: Record<string, number> = {};
-    CRITERIA.forEach(c => { initial[c] = 0; });
+    CRITERIA.forEach(({ id }) => { initial[id] = 0; });
     setScoreForm(initial);
     setFeedback('');
   };
 
-  const totalMarks = Math.round(
-    Object.values(scoreForm).reduce((a, b) => a + b, 0) / (CRITERIA.length || 1)
-  );
+  const totalMarks = CRITERIA.reduce((sum, criterion) => sum + (scoreForm[criterion.id] ?? 0), 0);
+
+  const updateCriterionScore = (criterionId: string, value: string) => {
+    setScoreForm(prev => ({
+      ...prev,
+      [criterionId]: clampScore(Number(value))
+    }));
+  };
 
   const handleSubmitScore = async () => {
     if (!scoringTeam) return;
@@ -115,7 +137,7 @@ export default function SeminarHallDashboard() {
       const body = {
         teamId: scoringTeam,
         marks: totalMarks,
-        criteria: CRITERIA.map(name => ({ name, marks: scoreForm[name] ?? 0 })),
+        criteria: CRITERIA.map(({ id, label }) => ({ name: label, marks: scoreForm[id] ?? 0 })),
         feedback: feedback.trim() || undefined
       };
 
@@ -130,8 +152,8 @@ export default function SeminarHallDashboard() {
         throw new Error(err.error || 'Failed to submit score');
       }
 
-      const result = await res.json();
-      toast({ title: 'SCORE SUBMITTED!', description: `Score: ${totalMarks}/100` });
+        const result = await res.json();
+        toast({ title: 'SCORE SUBMITTED!', description: `Score: ${totalMarks}/50` });
       setScoringTeam(null);
 
       // Refresh leaderboard for this domain
@@ -236,30 +258,32 @@ export default function SeminarHallDashboard() {
                         <div className="mt-6 border-t-4 border-black pt-4">
                           <h4 className="font-heading text-lg md:text-xl mb-3 md:mb-4">SCORE THIS TEAM</h4>
                           <div className="space-y-3">
-                            {CRITERIA.map(criterion => (
-                              <div key={criterion} className="flex items-center gap-2 md:gap-4">
-                                <label className="font-heading text-xs md:text-base w-28 md:w-40 shrink-0">{criterion}</label>
+                            {CRITERIA.map(({ id, label, description }) => (
+                              <div key={id} className="flex items-center justify-between gap-3 rounded-lg border-2 border-black bg-gray-50 p-3">
+                                <div className="min-w-0 flex-1">
+                                  <label htmlFor={`${team.teamId}-${id}`} className="font-heading text-sm md:text-base block">
+                                    {label}
+                                  </label>
+                                  <p className="font-body text-xs text-gray-500">{description}</p>
+                                </div>
                                 <input
-                                  type="range"
+                                  id={`${team.teamId}-${id}`}
+                                  type="number"
+                                  inputMode="numeric"
                                   min={0}
-                                  max={100}
-                                  value={scoreForm[criterion] ?? 0}
-                                  onChange={e => setScoreForm(prev => ({
-                                    ...prev,
-                                    [criterion]: Number(e.target.value)
-                                  }))}
-                                  className="flex-1"
+                                  max={10}
+                                  step={1}
+                                  value={scoreForm[id] ?? 0}
+                                  onChange={e => updateCriterionScore(id, e.target.value)}
+                                  className="h-14 w-14 shrink-0 rounded-xl border-4 border-black bg-[#ff1a1a] text-center font-display text-3xl text-white outline-none transition-all focus:bg-white focus:text-black focus:ring-4 focus:ring-[#ff1a1a]/20"
                                 />
-                                <span className="font-display text-base md:text-xl w-10 md:w-12 text-right">
-                                  {scoreForm[criterion] ?? 0}
-                                </span>
                               </div>
                             ))}
                           </div>
 
                           <div className="mt-4 flex items-center gap-3 md:gap-4">
                             <div className="bg-[#ff1a1a] text-white px-3 md:px-4 py-2 comic-border font-display text-lg md:text-2xl">
-                              AVG: {totalMarks}/100
+                              TOTAL: {totalMarks}/50
                             </div>
                           </div>
 

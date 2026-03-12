@@ -68,7 +68,7 @@ const ScoreSchema = new mongoose.Schema({
   judgeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Judge', required: true },
   domainId: { type: mongoose.Schema.Types.ObjectId, ref: 'Domain', required: true },
   venueId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lab', required: true },
-  round: { type: String, enum: ['lab_round', 'final_round', 'finals'], required: true },
+  round: { type: String, enum: ['lab_round', 'finals'], required: true },
   marks: { type: Number, required: true, min: 0, max: 100 },
   criteria: [{ name: String, marks: { type: Number, min: 0, max: 100 } }],
   feedback: { type: String, maxlength: 1000 },
@@ -78,7 +78,7 @@ const Score = mongoose.models.Score || mongoose.model('Score', ScoreSchema);
 // --- Competition ---
 const CompetitionSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  currentRound: { type: String, enum: ['lab_round', 'final_round', 'finals'], default: 'lab_round' },
+  currentRound: { type: String, enum: ['lab_round', 'finals'], default: 'lab_round' },
   seminarHallId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lab' },
   qualifiedTeamsPerDomain: { type: Number, default: 5 },
   labRoundStartTime: { type: Date },
@@ -256,7 +256,7 @@ async function seed() {
     passwordHash,
     assignedLabId: labMap.get('114A'),
     assignedDomains: allDomainIds,
-    role: JudgeRole.LAB_ROUND,
+    role: JudgeRole.ADMIN,
     isActive: true,
   });
 

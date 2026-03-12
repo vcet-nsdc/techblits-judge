@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
 import { Team } from '@/models/Team';
 import { Judge, JudgeRole } from '@/models/Judge';
 import { Domain } from '@/models/Domain';
 import { Competition } from '@/models/Competition';
 import { LeaderboardService } from '@/lib/leaderboard';
-import { verifyToken } from '@/lib/middleware/auth';
-import { CompetitionRound } from '@/types/competition';
+import { Lab } from '@/models/Lab';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
+import { CompetitionRound, VenueType } from '@/types/competition';
 
 /**
  * GET /api/judge/seminar-hall/teams
@@ -14,7 +16,8 @@ import { CompetitionRound } from '@/types/competition';
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    await connectDB();
+    const token = extractTokenFromRequest(request);
     const user = verifyToken(token || undefined);
 
     if (!user) {
@@ -32,8 +35,23 @@ export async function GET(request: NextRequest) {
     }
 
     const competition = await Competition.findOne({ isActive: true });
-    const qualifiedPerDomain = competition?.qualifiedTeamsPerDomain ?? 5;
-    await LeaderboardService.syncTopTeamsToSeminarHall(qualifiedPerDomain);
+    if (competition?.currentRound !== CompetitionRound.FINALS) {
+      return NextResponse.json({
+        venue: 'Seminar Hall',
+        domains: []
+      });
+    }
+
+    const seminarHall = competition.seminarHallId
+      ? await Lab.findById(competition.seminarHallId)
+      : await Lab.findOne({ type: VenueType.SEMINAR_HALL });
+
+    if (!seminarHall) {
+      return NextResponse.json({
+        venue: 'Seminar Hall',
+        domains: []
+      });
+    }
 
     // Build domain-grouped response
     const domains = await Domain.find({
@@ -49,6 +67,7 @@ export async function GET(request: NextRequest) {
         const teams = await Team.find({
           domainId: domain._id,
           qualifiedForFinals: true,
+          finalVenueId: seminarHall._id,
           isActive: true
         }).populate('labId');
 
@@ -71,7 +90,7 @@ export async function GET(request: NextRequest) {
             labRoundScore: labScoreMap.get(team._id.toString()) ?? 0,
             finalScore: team.finalScore,
             rank: team.rank
-          }))
+          })).sort((left, right) => right.labRoundScore - left.labRoundScore)
         };
       })
     );

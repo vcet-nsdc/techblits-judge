@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
+import { connectDB } from '@/lib/mongodb';
 import { Lab } from '@/models/Lab';
 import { Team } from '@/models/Team';
 import { Competition } from '@/models/Competition';
 import { LeaderboardService } from '@/lib/leaderboard';
 import { competitionCacheService } from '@/lib/competition-cache';
+import { socketServer } from '@/lib/websocket';
+import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 
 /**
  * POST /api/admin/competition/transition
@@ -19,8 +22,14 @@ import { competitionCacheService } from '@/lib/competition-cache';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Simple admin check via query param token for now
-    // (In production this would use the JWT admin role middleware)
+    await connectDB();
+    // Admin auth check
+    const token = extractTokenFromRequest(request);
+    const user = verifyToken(token ?? undefined);
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const qualifiedPerDomainOverride: number | undefined = body.qualifiedPerDomain;
 
@@ -64,6 +73,16 @@ export async function POST(request: NextRequest) {
     // Invalidate all leaderboard caches
     await competitionCacheService.clearAllLeaderboards();
 
+    // WebSocket broadcast round_transition event to ALL connected clients
+    if (socketServer.io) {
+      socketServer.io.emit('round_transition', {
+        round: 'finals',
+        venue: 'Seminar Hall',
+        qualifiedTeams: qualifiedTeamSummary,
+        timestamp: new Date().toISOString()
+      });
+    }
+
     return NextResponse.json({
       success: true,
       message: `Finals started - ${qualifiedTeamSummary.length} teams qualified`,
@@ -85,8 +104,16 @@ export async function POST(request: NextRequest) {
  * GET /api/admin/competition/transition
  * Returns the current transition status and any qualified teams.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    await connectDB();
+    
+    const token = extractTokenFromRequest(request);
+    const user = verifyToken(token ?? undefined);
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const competition = await Competition.findOne({ isActive: true });
     if (!competition) {
       return NextResponse.json({ error: 'No active competition' }, { status: 404 });
@@ -106,8 +133,8 @@ export async function GET() {
       qualifiedTeams: qualifiedTeams.map(t => ({
         teamId: t._id.toString(),
         teamName: t.name,
-        domain: (t.domainId as { name?: string })?.name,
-        domainId: t.domainId.toString(),
+        domain: (t.domainId as { _id?: unknown; name?: string })?.name,
+        domainId: (t.domainId as { _id?: { toString(): string } })?._id?.toString() ?? '',
         finalVenue: (t.finalVenueId as { name?: string })?.name,
         finalScore: t.finalScore
       }))

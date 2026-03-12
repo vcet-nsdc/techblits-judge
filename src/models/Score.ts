@@ -24,13 +24,14 @@ const ScoreSchema: Schema = new Schema({
   judgeId: { type: Schema.Types.ObjectId, ref: 'Judge', required: true },
   domainId: { type: Schema.Types.ObjectId, ref: 'Domain', required: true },
   venueId: { type: Schema.Types.ObjectId, ref: 'Lab', required: true },
-  round: { type: String, enum: ['lab_round', 'final_round', 'finals'], required: true },
+  round: { type: String, enum: ['lab_round', 'finals'], required: true },
   marks: { type: Number, required: true, min: 0, max: 100 },
   criteria: [{
     name: { type: String },
     marks: { type: Number, min: 0, max: 100 }
   }],
-  feedback: { type: String, maxlength: 1000 }
+  feedback: { type: String, maxlength: 1000 },
+  submittedAt: { type: Date, default: Date.now }
 }, { 
   timestamps: true 
 });

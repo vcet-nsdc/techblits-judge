@@ -31,7 +31,8 @@ const TeamSchema = new Schema<ITeam>(
 );
 
 export const TeamModel: Model<ITeam> =
-  mongoose.models.Team || mongoose.model<ITeam>("Team", TeamSchema);
+  (mongoose.models.TeamReg as Model<ITeam> | undefined) ||
+  mongoose.model<ITeam>("TeamReg", TeamSchema);
 
 // Interface for Evaluation
 export interface IEvaluation extends Document {
@@ -64,5 +65,5 @@ const EvaluationSchema = new Schema<IEvaluation>(
 );
 
 export const EvaluationModel: Model<IEvaluation> =
-  mongoose.models.Evaluation ||
-  mongoose.model<IEvaluation>("Evaluation", EvaluationSchema);
+  (mongoose.models.EvaluationReg as Model<IEvaluation> | undefined) ||
+  mongoose.model<IEvaluation>("EvaluationReg", EvaluationSchema);

@@ -7,22 +7,32 @@ export function useJudgeLogin() {
   return useMutation({
     mutationFn: async (data: z.infer<typeof api.auth.login.input>) => {
       const validated = api.auth.login.input.parse(data);
-      const res = await fetch(api.auth.login.path, {
-        method: api.auth.login.method,
+      const res = await fetch("/api/judge/login", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(validated),
+        body: JSON.stringify({
+          email: validated.username,
+          password: validated.password,
+        }),
         credentials: "include",
       });
       if (!res.ok) {
-        throw new Error("Invalid judge credentials");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Invalid judge credentials");
       }
-      const result = api.auth.login.responses[200].parse(await res.json());
-      localStorage.setItem("judgeId", result.judgeId);
-      if (result.judgeRole) localStorage.setItem("judgeRole", result.judgeRole);
-      if (result.isSeminarHallJudge !== undefined) {
-        localStorage.setItem("isSeminarHallJudge", String(result.isSeminarHallJudge));
+      const result = await res.json();
+      const judge = result.judge;
+      localStorage.setItem("judgeId", judge.id);
+      localStorage.setItem("judgeRole", judge.role);
+      localStorage.setItem("isSeminarHallJudge", String(judge.role === "seminar_hall"));
+      if (result.token) {
+        localStorage.setItem("judgeToken", result.token);
       }
-      return result;
+      return {
+        judgeId: judge.id,
+        judgeRole: judge.role,
+        isSeminarHallJudge: judge.role === "seminar_hall",
+      };
     },
   });
 }
@@ -35,6 +45,7 @@ export function useJudgeLogout() {
       localStorage.removeItem("judgeId");
       localStorage.removeItem("judgeRole");
       localStorage.removeItem("isSeminarHallJudge");
+      localStorage.removeItem("judgeToken");
     },
     onSuccess: () => {
       queryClient.clear();

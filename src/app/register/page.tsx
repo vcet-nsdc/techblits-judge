@@ -46,7 +46,8 @@ export default function Register() {
       try {
         const res = await fetch(`/api/labs?type=lab&domain=${encodeURIComponent(selectedDomain)}`);
         const data = await res.json();
-        const labList = data.map((lab: { id: string; name: string }) => ({
+        const labArray = data.labs || data;
+        const labList = labArray.map((lab: { id: string; name: string }) => ({
           id: lab.name,
           name: lab.name,
         }));

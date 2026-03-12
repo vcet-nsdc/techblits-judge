@@ -62,19 +62,29 @@ export const api = {
   auth: {
     login: {
       method: 'POST' as const,
-      path: '/api/auth/login' as const,
+      path: '/api/judge/login' as const,
       input: z.object({
         username: z.string(),
         password: z.string(),
       }),
       responses: {
-        200: z.object({ message: z.string(), judgeId: z.string(), judgeRole: z.string().optional(), isSeminarHallJudge: z.boolean().optional() }),
+        200: z.object({
+          judge: z.object({
+            id: z.string(),
+            name: z.string(),
+            email: z.string(),
+            role: z.string(),
+            assignedLabId: z.string().optional(),
+            assignedDomains: z.array(z.string()).optional(),
+          }),
+          token: z.string().optional(),
+        }),
         401: errorSchemas.unauthorized,
       },
     },
     logout: {
       method: 'POST' as const,
-      path: '/api/auth/logout' as const,
+      path: '/api/judge/logout' as const,
       responses: {
         200: z.object({ message: z.string() }),
       }

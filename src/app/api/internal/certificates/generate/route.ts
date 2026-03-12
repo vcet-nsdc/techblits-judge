@@ -1,20 +1,11 @@
 import { timingSafeEqual } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { generateCertificatesForTeam } from '@/lib/certificates';
+import { getCertificateConfig, getTeamAttendedMembers } from '@/lib/certificates';
 
 const generateSchema = z.object({
   teamName: z.string().min(1, 'Team name is required'),
-  sessionKey: z.string().min(1).optional()
 });
-
-function getClientIp(request: NextRequest): string | undefined {
-  const forwardedFor = request.headers.get('x-forwarded-for');
-  if (forwardedFor) {
-    return forwardedFor.split(',')[0]?.trim();
-  }
-  return request.headers.get('x-real-ip') ?? undefined;
-}
 
 function isAuthorizedBySecret(request: NextRequest): { authorized: boolean; reason?: string } {
   const configuredSecret = process.env.CERTIFICATE_API_SECRET;
@@ -54,42 +45,40 @@ export async function POST(request: NextRequest) {
     const parsed = generateSchema.safeParse(await request.json());
     if (!parsed.success) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Invalid payload',
-          details: parsed.error.issues
-        },
+        { success: false, error: 'Invalid payload', details: parsed.error.issues },
         { status: 400 }
       );
     }
 
-    const actor = request.headers.get('x-requested-by') || 'internal-service';
-    const result = await generateCertificatesForTeam({
-      teamName: parsed.data.teamName,
-      sessionKey: parsed.data.sessionKey,
-      actor,
-      endpoint: 'hidden_generate',
-      requestedByIp: getClientIp(request)
-    });
+    const config = await getCertificateConfig();
+    if (!config) {
+      return NextResponse.json(
+        { success: false, error: 'Certificate config not set up' },
+        { status: 503 }
+      );
+    }
+
+    const teamData = await getTeamAttendedMembers(parsed.data.teamName);
 
     return NextResponse.json({
       success: true,
-      message: 'Certificates generated successfully',
-      team: result.teamName,
-      sessionKey: result.sessionKey,
-      generatedCount: result.generatedCount,
-      certificates: result.certificates
+      teamName: teamData.teamName,
+      members: teamData.members,
+      config: {
+        templateUrl: config.templateImagePath,
+        nameX: config.nameX,
+        nameY: config.nameY,
+        nameSize: config.nameSize,
+        nameColor: config.nameColor,
+        teamX: config.teamX,
+        teamY: config.teamY,
+        teamSize: config.teamSize,
+        teamColor: config.teamColor,
+      },
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to generate certificates';
-    const status = message === 'Team not found' ? 404 : 422;
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: message
-      },
-      { status }
-    );
+    const status = message.includes('not found') ? 404 : 422;
+    return NextResponse.json({ success: false, error: message }, { status });
   }
 }

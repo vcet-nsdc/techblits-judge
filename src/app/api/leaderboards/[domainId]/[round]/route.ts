@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
 import { Domain } from '@/models/Domain';
 import { LeaderboardService } from '@/lib/leaderboard';
 import { CompetitionRound } from '@/types/competition';
@@ -8,6 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ domainId: string; round: string }> }
 ) {
   try {
+    await connectDB();
     const { domainId, round } = await params;
 
     // Validate domain exists
@@ -21,7 +23,9 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid round' }, { status: 400 });
     }
 
-    const leaderboard = await LeaderboardService.getLeaderboard(domainId, round as CompetitionRound);
+    const leaderboard = round === CompetitionRound.FINALS
+      ? await LeaderboardService.getFinalsLeaderboard(domainId)
+      : await LeaderboardService.getLeaderboard(domainId, round as CompetitionRound);
 
     return NextResponse.json({
       domain: {

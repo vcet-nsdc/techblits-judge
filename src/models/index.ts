@@ -6,6 +6,7 @@ import { Judge } from './Judge';
 import { Score } from './Score';
 import { Competition } from './Competition';
 import { CertificateAuditLog } from './CertificateAuditLog';
+import { CertificateConfig } from './CertificateConfig';
 
 // Initialize database connection
 connectDB().catch(console.error);
@@ -17,7 +18,8 @@ export {
   Judge,
   Score,
   Competition,
-  CertificateAuditLog
+  CertificateAuditLog,
+  CertificateConfig
 };
 
 export * from './Lab';
@@ -27,3 +29,4 @@ export * from './Judge';
 export * from './Score';
 export * from './Competition';
 export * from './CertificateAuditLog';
+export * from './CertificateConfig';

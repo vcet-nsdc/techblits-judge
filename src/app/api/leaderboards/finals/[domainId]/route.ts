@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { connectDB } from '@/lib/mongodb';
 import { Domain } from '@/models/Domain';
 import { LeaderboardService } from '@/lib/leaderboard';
 
@@ -11,6 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ domainId: string }> }
 ) {
   try {
+    await connectDB();
     const { domainId } = await params;
 
     const domain = await Domain.findById(domainId);
