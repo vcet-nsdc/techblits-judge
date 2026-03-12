@@ -2,29 +2,21 @@
 
 import React from 'react';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
 import { Layout } from '@/components/Layout';
 import { ComicCard, ComicButton, SectionTitle } from '@/components/ComicUI';
-import { useTeam } from '@/hooks/use-teams';
-import { useCreateEvaluation } from '@/hooks/use-evaluations';
 import { getJudgeId } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { z } from 'zod';
 import { ShieldAlert, Crosshair, Users, BrainCircuit, Rocket, Presentation, ArrowLeft } from 'lucide-react';
-import { insertEvaluationSchema } from '@/db/schema';
 
-const evalSchema = z.object({
-  judgeId: z.string(),
-  teamId: z.coerce.number(),
-  innovation: z.coerce.number().min(0).max(10),
-  techComplexity: z.coerce.number().min(0).max(10),
-  uiUx: z.coerce.number().min(0).max(10),
-  practicalImpact: z.coerce.number().min(0).max(10),
-  presentation: z.coerce.number().min(0).max(10),
-});
-
-type EvalForm = z.infer<typeof evalSchema>;
+interface JudgeTeamDetail {
+  id: string;
+  name: string;
+  lab: string;
+  domain: string;
+  problemStatement: string;
+  members: string[];
+  hasScored: boolean;
+}
 
 const CRITERIA = [
   { id: 'innovation', label: 'INNOVATION', icon: Rocket, desc: 'Originality and creativity' },
@@ -38,52 +30,115 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
   const router = useRouter();
   const judgeId = getJudgeId();
   const { toast } = useToast();
-
-  const resolvedParams = React.use(params);
-  const teamId = Number(resolvedParams?.teamId);
-
-  React.useEffect(() => {
-    if (!judgeId) router.push('/judge-portal');
-  }, [judgeId, router]);
-
-  const { data: team, isLoading } = useTeam(teamId);
-  const { mutate: submitEval, isPending } = useCreateEvaluation();
-
-  const form = useForm<EvalForm>({
-    resolver: zodResolver(evalSchema) as any,
-    defaultValues: {
-      teamId: teamId,
-      judgeId: judgeId || '',
-      innovation: 0,
-      techComplexity: 0,
-      uiUx: 0,
-      practicalImpact: 0,
-      presentation: 0,
-    }
+  const [team, setTeam] = React.useState<JudgeTeamDetail | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [submitting, setSubmitting] = React.useState(false);
+  const [scores, setScores] = React.useState<Record<string, number>>({
+    innovation: 0,
+    techComplexity: 0,
+    uiUx: 0,
+    practicalImpact: 0,
+    presentation: 0,
   });
 
-  const watchAll = form.watch();
-  const totalScore = (
-    Number(watchAll.innovation || 0) +
-    Number(watchAll.techComplexity || 0) +
-    Number(watchAll.uiUx || 0) +
-    Number(watchAll.practicalImpact || 0) +
-    Number(watchAll.presentation || 0)
-  );
+  const resolvedParams = React.use(params);
+  const teamId = resolvedParams?.teamId || '';
 
-  const onSubmit = (data: EvalForm) => {
-    submitEval(data, {
-      onSuccess: () => {
-        toast({ title: "JUDGMENT CAST", description: "Score successfully recorded." });
-        router.push(`/judge/lab/${encodeURIComponent(team!.lab)}`);
-      },
-      onError: (error: Error) => {
-        toast({ title: "SYSTEM FAILURE", description: error.message, variant: "destructive" });
+  React.useEffect(() => {
+    if (!judgeId || !localStorage.getItem('judgeToken')) {
+      router.push('/judge-portal');
+    }
+  }, [judgeId, router]);
+
+  React.useEffect(() => {
+    const fetchTeam = async () => {
+      const token = localStorage.getItem('judgeToken');
+      if (!token || !teamId) return;
+
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/judge/teams/${teamId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to fetch team');
+        }
+        setTeam(data.team);
+      } catch (error) {
+        toast({
+          title: 'SYSTEM FAILURE',
+          description: error instanceof Error ? error.message : 'Failed to fetch team',
+          variant: 'destructive'
+        });
+        router.push('/judge/dashboard');
+      } finally {
+        setLoading(false);
       }
-    });
+    };
+
+    fetchTeam();
+  }, [router, teamId, toast]);
+
+  const totalScore = CRITERIA.reduce((sum, criterion) => sum + (scores[criterion.id] ?? 0), 0);
+
+  const updateScore = (criterionId: string, value: string) => {
+    const parsedValue = Number.parseInt(value, 10);
+    const nextValue = Number.isNaN(parsedValue) ? 0 : Math.min(10, Math.max(0, parsedValue));
+    setScores((currentScores) => ({
+      ...currentScores,
+      [criterionId]: nextValue,
+    }));
   };
 
-  if (isLoading || !team) return <Layout><div className="text-center py-16 md:py-24 font-display text-3xl md:text-5xl">GATHERING INTEL...</div></Layout>;
+  const onSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!team) return;
+
+    const token = localStorage.getItem('judgeToken');
+    if (!token) {
+      router.push('/judge-portal');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/judge/scores', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          teamId: team.id,
+          marks: totalScore,
+          round: 'lab_round',
+          criteria: CRITERIA.map((criterion) => ({
+            name: criterion.label,
+            marks: scores[criterion.id] ?? 0,
+          })),
+        })
+      });
+
+      const result = await res.json();
+      if (!res.ok) {
+        throw new Error(result.error || 'Failed to submit score');
+      }
+
+      toast({ title: "JUDGMENT CAST", description: "Score successfully recorded." });
+      router.push(`/judge/lab/${encodeURIComponent(team.lab)}`);
+    } catch (error) {
+      toast({
+        title: "SYSTEM FAILURE",
+        description: error instanceof Error ? error.message : 'Failed to submit score',
+        variant: "destructive"
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading || !team) return <Layout><div className="text-center py-16 md:py-24 font-display text-3xl md:text-5xl">GATHERING INTEL...</div></Layout>;
 
   return (
     <Layout>
@@ -125,7 +180,7 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
               <div className="mb-6">
                 <h3 className="font-heading text-xl mb-2 border-b-4 border-black pb-1">SQUAD MEMBERS</h3>
                 <ul className="list-disc list-inside font-body text-xl pl-4 space-y-1">
-                  {team.members.map((m, i) => <li key={i}>{m}</li>)}
+                  {team.members.map((member, index) => <li key={index}>{member}</li>)}
                 </ul>
               </div>
             </ComicCard>
@@ -135,7 +190,7 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
           <div className="lg:col-span-2">
             <SectionTitle className="mb-6 md:mb-8 rotate-1">SCORECARD // MAX 50 PTS</SectionTitle>
 
-            <form onSubmit={form.handleSubmit(onSubmit)}>
+            <form onSubmit={onSubmit}>
               {/* Desktop table view */}
               <div className="comic-panel bg-white overflow-hidden hidden md:block">
                 <table className="w-full border-collapse">
@@ -167,10 +222,11 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
                             <input
                               type="number"
                               min="0" max="10"
-                              {...form.register(c.id as keyof EvalForm)}
+                              value={scores[c.id] ?? 0}
+                              onChange={(e) => updateScore(c.id, e.target.value)}
                               onInput={(e: React.FormEvent<HTMLInputElement>) => {
                                 const target = e.target as HTMLInputElement;
-                                const val = parseInt(target.value);
+                                const val = Number.parseInt(target.value, 10);
                                 if (val > 10) target.value = "10";
                                 if (val < 0) target.value = "0";
                               }}
@@ -203,10 +259,11 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
                         <input
                           type="number"
                           min="0" max="10"
-                          {...form.register(c.id as keyof EvalForm)}
+                          value={scores[c.id] ?? 0}
+                          onChange={(e) => updateScore(c.id, e.target.value)}
                           onInput={(e: React.FormEvent<HTMLInputElement>) => {
                             const target = e.target as HTMLInputElement;
-                            const val = parseInt(target.value);
+                            const val = Number.parseInt(target.value, 10);
                             if (val > 10) target.value = "10";
                             if (val < 0) target.value = "0";
                           }}
@@ -227,8 +284,8 @@ export default function EvaluateView({ params }: { params: Promise<{ teamId: str
                   </div>
                 </div>
 
-                <ComicButton type="submit" size="lg" disabled={isPending} className="w-full md:w-auto h-full min-h-[80px]">
-                  {isPending ? 'PROCESSING...' : 'CONFIRM JUDGMENT'}
+                <ComicButton type="submit" size="lg" disabled={submitting} className="w-full md:w-auto h-full min-h-20">
+                  {submitting ? 'PROCESSING...' : team.hasScored ? 'UPDATE JUDGMENT' : 'CONFIRM JUDGMENT'}
                 </ComicButton>
               </div>
             </form>

@@ -12,6 +12,9 @@ export interface ITeam extends Document {
   name: string;
   labId: Types.ObjectId;
   domainId: Types.ObjectId;
+  problemStatement?: string;
+  githubRepo?: string;
+  figmaLink?: string | null;
   members: ITeamMember[];
   currentScore: number;
   rank?: number;
@@ -35,6 +38,9 @@ const TeamSchema: Schema = new Schema({
   name: { type: String, required: true },
   labId: { type: Schema.Types.ObjectId, ref: 'Lab', required: true },
   domainId: { type: Schema.Types.ObjectId, ref: 'Domain', required: true },
+  problemStatement: { type: String, default: '' },
+  githubRepo: { type: String, default: '' },
+  figmaLink: { type: String, default: null },
   members: [TeamMemberSchema],
   currentScore: { type: Number, default: 0 },
   rank: { type: Number },

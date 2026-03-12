@@ -5,36 +5,67 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Layout } from '@/components/Layout';
 import { ComicCard, ComicButton } from '@/components/ComicUI';
-import { useTeams } from '@/hooks/use-teams';
-import { useEvaluations } from '@/hooks/use-evaluations';
 import { getJudgeId } from '@/hooks/use-auth';
 import { CheckCircle2, Play, ArrowLeft } from 'lucide-react';
+
+interface JudgeTeam {
+  id: string;
+  name: string;
+  domain: string;
+  lab: string;
+  problemStatement: string;
+  members: string[];
+  hasScored: boolean;
+}
 
 export default function LabView({ params }: { params: Promise<{ labId: string }> }) {
   const router = useRouter();
   const judgeId = getJudgeId();
+  const [teams, setTeams] = React.useState<JudgeTeam[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
   
   // Unwrap params using React.use
   const resolvedParams = React.use(params);
   const labId = decodeURIComponent(resolvedParams?.labId || '');
 
   React.useEffect(() => {
-    if (!judgeId) router.push('/judge-portal');
+    if (!judgeId || !localStorage.getItem('judgeToken')) {
+      router.push('/judge-portal');
+    }
   }, [judgeId, router]);
 
-  const { data: teams, isLoading: loadingTeams } = useTeams();
-  const { data: evaluations, isLoading: loadingEvals } = useEvaluations();
+  React.useEffect(() => {
+    const fetchTeams = async () => {
+      const token = localStorage.getItem('judgeToken');
+      if (!token) return;
 
-  if (loadingTeams || loadingEvals) {
+      try {
+        setLoading(true);
+        setError(null);
+        const res = await fetch('/api/judge/teams', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to fetch teams');
+        }
+        setTeams(data.teams || []);
+      } catch (fetchError) {
+        setError(fetchError instanceof Error ? fetchError.message : 'Failed to load teams');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTeams();
+  }, []);
+
+  if (loading) {
     return <Layout><div className="text-center py-24 font-display text-5xl animate-pulse">SCANNING SECTOR...</div></Layout>;
   }
 
-  const labTeams = teams?.filter(t => t.lab === labId) || [];
-
-  // Find which teams this specific judge has already evaluated
-  const evaluatedTeamIds = new Set(
-    evaluations?.filter(e => e.judgeId === judgeId).map(e => e.teamId)
-  );
+  const labTeams = teams.filter(team => team.lab === labId);
 
   return (
     <Layout>
@@ -58,6 +89,12 @@ export default function LabView({ params }: { params: Promise<{ labId: string }>
           </div>
         </div>
 
+        {error && (
+          <ComicCard className="mb-6 bg-red-50 text-center py-6">
+            <p className="font-heading text-xl text-red-700">{error}</p>
+          </ComicCard>
+        )}
+
         {labTeams.length === 0 ? (
           <ComicCard className="text-center py-12 md:py-16 bg-gray-100">
             <h2 className="font-display text-3xl md:text-5xl text-gray-500">NO TEAMS DETECTED IN THIS SECTOR</h2>
@@ -65,7 +102,7 @@ export default function LabView({ params }: { params: Promise<{ labId: string }>
         ) : (
           <div className="grid gap-6 md:gap-8">
             {labTeams.map(team => {
-              const isEvaluated = evaluatedTeamIds.has(team.id);
+              const isEvaluated = team.hasScored;
 
               return (
                 <ComicCard key={team.id} className={`flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 ${isEvaluated ? 'bg-white opacity-60' : 'bg-white'}`}>
@@ -88,20 +125,14 @@ export default function LabView({ params }: { params: Promise<{ labId: string }>
                   </div>
 
                   <div className="w-full md:w-auto">
-                    {!isEvaluated ? (
-                      <Link href={`/judge/evaluate/${team.id}`}>
-                        <ComicButton
-                          variant="primary"
-                          className="w-full h-full min-h-[100px]"
-                        >
-                          <Play className="mr-2" size={32} /> EVALUATE
-                        </ComicButton>
-                      </Link>
-                    ) : (
-                      <div className="w-full h-full min-h-[100px] flex items-center justify-center p-6 bg-gray-100 comic-border opacity-50 grayscale">
-                        <CheckCircle2 size={48} className="text-green-500" />
-                      </div>
-                    )}
+                    <Link href={`/judge/evaluate/${team.id}`}>
+                      <ComicButton
+                        variant="primary"
+                        className="w-full h-full min-h-25"
+                      >
+                        <Play className="mr-2" size={32} /> {isEvaluated ? 'UPDATE SCORE' : 'EVALUATE'}
+                      </ComicButton>
+                    </Link>
                   </div>
                 </ComicCard>
               );
