@@ -6,9 +6,8 @@ import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Layout } from '@/components/Layout';
 import { ComicCard, ComicButton, SectionTitle } from '@/components/ComicUI';
-import { useCreateTeam } from '@/hooks/use-teams';
+import { useCreateTeam, insertTeamSchema } from '@/hooks/use-teams';
 import { useToast } from '@/hooks/use-toast';
-import { insertTeamSchema } from '@/db/schema';
 import { Plus, Trash2, Users } from 'lucide-react';
 import { z } from 'zod';
 

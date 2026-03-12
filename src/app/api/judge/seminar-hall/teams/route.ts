@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { Team } from '@/models/Team';
 import { Judge, JudgeRole } from '@/models/Judge';
@@ -53,9 +54,19 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Extract raw ObjectIds from populated assignedDomains
+    const rawDomainIds = judge.assignedDomains.map((d: unknown) => {
+      if (typeof d === 'object' && d !== null) {
+        const asObj = d as Record<string, unknown>;
+        if (typeof asObj.toHexString === 'function') return new mongoose.Types.ObjectId((asObj.toHexString as () => string)());
+        if (asObj._id) return asObj._id as mongoose.Types.ObjectId;
+      }
+      return d as mongoose.Types.ObjectId;
+    });
+
     // Build domain-grouped response
     const domains = await Domain.find({
-      _id: { $in: judge.assignedDomains },
+      _id: { $in: rawDomainIds },
       isActive: true
     });
 

@@ -1,12 +1,16 @@
 "use client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/routes";
 import { z } from "zod";
+
+const loginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
 
 export function useJudgeLogin() {
   return useMutation({
-    mutationFn: async (data: z.infer<typeof api.auth.login.input>) => {
-      const validated = api.auth.login.input.parse(data);
+    mutationFn: async (data: z.infer<typeof loginSchema>) => {
+      const validated = loginSchema.parse(data);
       const res = await fetch("/api/judge/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -41,7 +45,7 @@ export function useJudgeLogout() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await fetch(api.auth.logout.path, { method: api.auth.logout.method, credentials: "include" });
+      await fetch("/api/judge/logout", { method: "POST", credentials: "include" });
       localStorage.removeItem("judgeId");
       localStorage.removeItem("judgeRole");
       localStorage.removeItem("isSeminarHallJudge");

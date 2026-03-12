@@ -59,3 +59,9 @@ TeamSchema.index({ qualifiedForFinals: 1, domainId: 1 });
 TeamSchema.index({ name: 1, isActive: 1 });
 
 export const Team = mongoose.models.Team as mongoose.Model<ITeam> || mongoose.model<ITeam>('Team', TeamSchema);
+
+// Drop legacy indexes not in current schema (e.g. stale `id_1` from old db/models.ts)
+if (!mongoose.models._teamIndexesSynced) {
+  Team.syncIndexes().catch(() => {});
+  (mongoose.models as Record<string, unknown>)._teamIndexesSynced = true;
+}

@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
-import { storage } from "@/db/storage";
-import { insertTeamSchema, type InsertTeam } from "@/db/schema";
 import { connectDB } from "@/lib/mongodb";
 import { Domain } from "@/models/Domain";
 import { Lab } from "@/models/Lab";
-import { Team as CompetitionTeam } from "@/models/Team";
+import { Team } from "@/models/Team";
 import { VenueType } from "@/types/competition";
 import { z } from "zod";
 
-async function syncRegisteredTeamToCompetitionCollection(input: InsertTeam) {
+const insertTeamSchema = z.object({
+  name: z.string().min(1, "Team name is required"),
+  domain: z.string().min(1, "Battle domain is required"),
+  problemStatement: z.string().min(1, "Problem statement is required"),
+  lab: z.string().min(1, "Assigned lab is required"),
+  githubRepo: z.string().min(1, "Repository link is required"),
+  figmaLink: z.string().optional(),
+  members: z.array(z.string().min(1, "Member name cannot be empty")).min(1, "At least one member is required"),
+});
+
+type InsertTeam = z.infer<typeof insertTeamSchema>;
+
+async function registerTeam(input: InsertTeam) {
   await connectDB();
 
   const [domain, lab] = await Promise.all([
@@ -40,7 +50,7 @@ async function syncRegisteredTeamToCompetitionCollection(input: InsertTeam) {
           capacity: 50,
         },
         $set: {
-          assignedDomain: input.domain,
+          assignedDomain: undefined,
           isActive: true,
         },
       },
@@ -56,8 +66,8 @@ async function syncRegisteredTeamToCompetitionCollection(input: InsertTeam) {
     throw new Error("Unable to prepare registration metadata for team sync");
   }
 
-  if (lab.assignedDomain && lab.assignedDomain !== input.domain) {
-    throw new Error(`Lab ${input.lab} is not assigned to ${input.domain}`);
+  if (!lab.assignedDomain || lab.assignedDomain.toString() !== domain._id.toString()) {
+    await Lab.findByIdAndUpdate(lab._id, { $set: { assignedDomain: domain._id } });
   }
 
   const members = input.members.map((memberName, index) => ({
@@ -66,13 +76,16 @@ async function syncRegisteredTeamToCompetitionCollection(input: InsertTeam) {
     role: index === 0 ? "leader" : "member",
   }));
 
-  await CompetitionTeam.findOneAndUpdate(
+  const team = await Team.findOneAndUpdate(
     { name: input.name.trim(), isActive: true },
     {
       $set: {
         name: input.name.trim(),
         labId: lab._id,
         domainId: domain._id,
+        problemStatement: input.problemStatement,
+        githubRepo: input.githubRepo,
+        figmaLink: input.figmaLink ?? null,
         members,
       },
     },
@@ -82,26 +95,52 @@ async function syncRegisteredTeamToCompetitionCollection(input: InsertTeam) {
       setDefaultsOnInsert: true,
     }
   );
+
+  return team;
 }
 
 export async function GET() {
-  const teams = await storage.getTeams();
-  return NextResponse.json(teams);
+  try {
+    await connectDB();
+    const teams = await Team.find({ isActive: true })
+      .populate('labId', 'name type')
+      .populate('domainId', 'name')
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return NextResponse.json(
+      teams.map(team => ({
+        id: team._id.toString(),
+        name: team.name,
+        domain: (team.domainId as { name?: string })?.name || '',
+        lab: (team.labId as { name?: string })?.name || '',
+        problemStatement: team.problemStatement || '',
+        githubRepo: team.githubRepo || '',
+        figmaLink: team.figmaLink ?? null,
+        members: team.members?.map(m => m.name) || [],
+        currentScore: team.currentScore || 0,
+        createdAt: team.createdAt,
+      }))
+    );
+  } catch (error) {
+    console.error("Error fetching teams:", error);
+    return NextResponse.json({ message: "Failed to fetch teams" }, { status: 500 });
+  }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const input = insertTeamSchema.parse(body);
-    const team = await storage.createTeam(input);
+    const team = await registerTeam(input);
 
-    try {
-      await syncRegisteredTeamToCompetitionCollection(input);
-    } catch (syncError) {
-      console.error("Registration sync to competition collection failed:", syncError);
-    }
-
-    return NextResponse.json(team, { status: 201 });
+    return NextResponse.json({
+      success: true,
+      team: {
+        id: team?._id.toString(),
+        name: team?.name,
+      }
+    }, { status: 201 });
   } catch (err: unknown) {
     if (err instanceof z.ZodError) {
       const firstError = err.issues[0];

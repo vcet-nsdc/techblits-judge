@@ -1,4 +1,4 @@
-import mongoose, { Schema, Document } from 'mongoose';
+import mongoose, { Schema, Document, Types } from 'mongoose';
 import { VenueType } from '@/types/competition';
 
 export interface ILab extends Document {
@@ -6,7 +6,7 @@ export interface ILab extends Document {
   location?: string;
   type: VenueType;
   capacity: number;
-  assignedDomain?: string;
+  assignedDomain?: Types.ObjectId | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -25,7 +25,7 @@ const LabSchema: Schema = new Schema({
     default: VenueType.LAB
   },
   capacity: { type: Number, default: 50 },
-  assignedDomain: { type: String, default: null },
+  assignedDomain: { type: Schema.Types.ObjectId, ref: 'Domain', default: null },
   isActive: { type: Boolean, default: true }
 }, { 
   timestamps: true 

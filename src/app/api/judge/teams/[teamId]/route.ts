@@ -10,10 +10,12 @@ import { CompetitionRound } from '@/types/competition';
 function toObjectIdString(value: unknown): string {
   if (!value) return '';
   if (typeof value === 'string') return value;
+  // Check for Mongoose ObjectId first (has toHexString method) to avoid infinite recursion
   if (typeof value === 'object' && value !== null) {
-    const withId = value as { _id?: unknown; toString?: () => string; name?: string };
-    if (withId._id) return toObjectIdString(withId._id);
-    if (typeof withId.toString === 'function') return withId.toString();
+    const asObj = value as Record<string, unknown>;
+    if (typeof asObj.toHexString === 'function') return (asObj.toHexString as () => string)();
+    if (asObj._id && asObj._id !== value) return toObjectIdString(asObj._id);
+    if (typeof asObj.toString === 'function') return asObj.toString();
   }
   return '';
 }

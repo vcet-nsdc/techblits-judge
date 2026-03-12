@@ -15,7 +15,7 @@ const LabSchema = new mongoose.Schema({
   location: { type: String },
   type: { type: String, enum: Object.values(VenueType), default: VenueType.LAB },
   capacity: { type: Number, default: 50 },
-  assignedDomain: { type: String, default: null },
+  assignedDomain: { type: mongoose.Schema.Types.ObjectId, ref: 'Domain', default: null },
   isActive: { type: Boolean, default: true },
 }, { timestamps: true });
 const Lab = mongoose.models.Lab || mongoose.model('Lab', LabSchema);
@@ -173,22 +173,26 @@ async function seed() {
   await mongoose.connection.db!.collection('teams').deleteMany({});
   console.log('✅ Cleared\n');
 
-  // ── 2. Create Labs ───────────────────────────────────────────────────────
-  console.log('🏗️  Creating labs...');
-  const createdLabs = await Lab.insertMany(LABS);
-  const labMap = new Map(createdLabs.map((l: any) => [l.name, l._id]));
-  console.log(`   Created ${createdLabs.length} venues (7 labs + Seminar Hall)`);
-  console.log('   Lab → Domain mapping:');
-  for (const l of createdLabs) {
-    if ((l as any).assignedDomain) console.log(`     ${(l as any).name} → ${(l as any).assignedDomain}`);
-  }
-  console.log('');
-
-  // ── 3. Create Domains ────────────────────────────────────────────────────
+  // ── 2. Create Domains ────────────────────────────────────────────────────
   console.log('🏗️  Creating domains...');
   const createdDomains = await Domain.insertMany(DOMAINS);
   const domainMap = new Map(createdDomains.map((d: any) => [d.name, d._id]));
   console.log(`   Created ${createdDomains.length} domains\n`);
+
+  // ── 3. Create Labs ───────────────────────────────────────────────────────
+  console.log('🏗️  Creating labs...');
+  const labsToCreate = LABS.map(l => ({
+    ...l,
+    assignedDomain: l.assignedDomain ? domainMap.get(l.assignedDomain as string) ?? null : null
+  }));
+  const createdLabs = await Lab.insertMany(labsToCreate);
+  const labMap = new Map(createdLabs.map((l: any) => [l.name, l._id]));
+  console.log(`   Created ${createdLabs.length} venues (7 labs + Seminar Hall)`);
+  console.log('   Lab → Domain mapping:');
+  for (const l of createdLabs) {
+    if ((l as any).assignedDomain) console.log(`     ${(l as any).name} → ${domainMap.get((LABS.find(x => x.name === (l as any).name)?.assignedDomain as string) || '')}`);
+  }
+  console.log('');
 
   // ── 4. Create Competition ────────────────────────────────────────────────
   console.log('🏗️  Creating competition...');
@@ -252,7 +256,7 @@ async function seed() {
   // Default admin/judge combo
   await Judge.create({
     name: 'Admin Judge',
-    email: 'JUDGETECHBILTZ',
+    email: 'JUDGETECHBLITZ',
     passwordHash,
     assignedLabId: labMap.get('114A'),
     assignedDomains: allDomainIds,
@@ -282,7 +286,7 @@ async function seed() {
   console.log('Judge credentials:');
   console.log('  Lab judges:     judge114a / judge114b / judge308a / judge308b / judge220 / judge221 / judge222');
   console.log('  Seminar Hall:   judgeseminar');
-  console.log('  Admin:          JUDGETECHBILTZ');
+  console.log('  Admin:          JUDGETECHBLITZ');
   console.log(`  Password (all): ${JUDGE_PASSWORD}`);
 
   await mongoose.disconnect();

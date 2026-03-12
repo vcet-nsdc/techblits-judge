@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Lab } from '@/models/Lab';
+import { Domain } from '@/models/Domain';
+import mongoose from 'mongoose';
 import { connectDB } from '@/lib/mongodb';
 import { VenueType } from '@/types/competition';
 
@@ -14,7 +16,19 @@ export async function GET(request: NextRequest) {
     const query: Record<string, unknown> = { isActive: true };
     if (type === 'seminar_hall') query.type = VenueType.SEMINAR_HALL;
     else if (type === 'lab') query.type = VenueType.LAB;
-    if (domain) query.assignedDomain = domain;
+    if (domain) {
+      if (/^[0-9a-fA-F]{24}$/.test(domain)) {
+        query.assignedDomain = new mongoose.Types.ObjectId(domain);
+      } else {
+        const dom = await Domain.findOne({ name: domain }).lean();
+        if (dom?._id) {
+          query.assignedDomain = dom._id;
+        } else {
+          // If domain name not found, return empty list
+          return NextResponse.json({ labs: [] });
+        }
+      }
+    }
 
     const labs = await Lab.find(query).sort({ name: 1 });
 

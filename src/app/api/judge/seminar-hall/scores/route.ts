@@ -12,6 +12,17 @@ import { extractTokenFromRequest, verifyToken } from '@/lib/middleware/auth';
 import { LeaderboardService } from '@/lib/leaderboard';
 import { competitionCacheService } from '@/lib/competition-cache';
 
+function extractObjectId(value: unknown): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null) {
+    const asObj = value as Record<string, unknown>;
+    if (typeof asObj.toHexString === 'function') return (asObj.toHexString as () => string)();
+    if (asObj._id && asObj._id !== value) return extractObjectId(asObj._id);
+  }
+  return String(value);
+}
+
 const finalsScoreSchema = z.object({
   teamId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid MongoDB ObjectId'),
   marks: z.number().min(0).max(100),
@@ -76,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     // Domain assignment check
     const hasAccess = judge.assignedDomains.some(
-      (d: mongoose.Types.ObjectId) => d.toString() === team.domainId.toString()
+      (d: unknown) => extractObjectId(d) === team.domainId.toString()
     );
     if (!hasAccess) {
       return NextResponse.json({ error: 'Judge not assigned to this domain' }, { status: 403 });
@@ -179,7 +190,7 @@ export async function GET(request: NextRequest) {
     }
 
     const hasAccess = judge.assignedDomains.some(
-      (d: mongoose.Types.ObjectId) => d.toString() === domainId
+      (d: unknown) => extractObjectId(d) === domainId
     );
     if (!hasAccess) {
       return NextResponse.json({ error: 'Judge not assigned to this domain' }, { status: 403 });

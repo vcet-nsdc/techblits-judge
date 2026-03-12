@@ -26,12 +26,13 @@ function toObjectIdString(value: unknown): string {
   }
 
   if (typeof value === 'object' && value !== null) {
-    const withId = value as { _id?: unknown; toString?: () => string };
-    if (withId._id) {
-      return toObjectIdString(withId._id);
+    const asObj = value as Record<string, unknown>;
+    if (typeof asObj.toHexString === 'function') return (asObj.toHexString as () => string)();
+    if (asObj._id && asObj._id !== value) {
+      return toObjectIdString(asObj._id);
     }
-    if (typeof withId.toString === 'function') {
-      return withId.toString();
+    if (typeof asObj.toString === 'function') {
+      return asObj.toString();
     }
   }
 
@@ -130,10 +131,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if score already exists for this judge-team-domain-round combination
+    const rawDomainId = toObjectIdString(team.domainId);
+
     const existingScore = await Score.findOne({
       teamId,
       judgeId: judge._id,
-      domainId: team.domainId,
+      domainId: new mongoose.Types.ObjectId(rawDomainId),
       round
     });
 
@@ -148,7 +151,7 @@ export async function POST(request: NextRequest) {
       const score = new Score({
         teamId,
         judgeId: judge._id,
-        domainId: team.domainId,
+        domainId: new mongoose.Types.ObjectId(rawDomainId),
         venueId,
         round,
         marks,
@@ -167,11 +170,11 @@ export async function POST(request: NextRequest) {
     // Invalidate cache and recalculate leaderboard
     let leaderboard;
     if (round === 'finals') {
-      await LeaderboardService.invalidateFinalsLeaderboard(team.domainId.toString());
-      leaderboard = await LeaderboardService.getFinalsLeaderboard(team.domainId.toString());
+      await LeaderboardService.invalidateFinalsLeaderboard(rawDomainId);
+      leaderboard = await LeaderboardService.getFinalsLeaderboard(rawDomainId);
     } else {
-      await LeaderboardService.invalidateLeaderboard(team.domainId.toString(), round as CompetitionRound);
-      leaderboard = await LeaderboardService.getLeaderboard(team.domainId.toString(), round as CompetitionRound);
+      await LeaderboardService.invalidateLeaderboard(rawDomainId, round as CompetitionRound);
+      leaderboard = await LeaderboardService.getLeaderboard(rawDomainId, round as CompetitionRound);
     }
 
     const updatedEntry = leaderboard.find((entry) => entry.teamId === teamId);
@@ -184,7 +187,7 @@ export async function POST(request: NextRequest) {
 
     // Queue score update for real-time processing
     await competitionCacheService.queueScoreUpdate(
-      team.domainId.toString(),
+      rawDomainId,
       round,
       teamId,
       judge._id.toString(),
