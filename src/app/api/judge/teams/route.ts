@@ -13,7 +13,7 @@ function toObjectIdString(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && value !== null) {
     const withId = value as { _id?: unknown; toString?: () => string; name?: string };
-    if (withId._id) return toObjectIdString(withId._id);
+    if (withId._id && withId._id !== value) return toObjectIdString(withId._id);
     if (typeof withId.toString === 'function') return withId.toString();
   }
   return '';
