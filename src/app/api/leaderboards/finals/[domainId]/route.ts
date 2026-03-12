@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { connectDB } from '@/lib/mongodb';
-import { Domain } from '@/models/Domain';
-import { LeaderboardService } from '@/lib/leaderboard';
+import { NextRequest, NextResponse } from "next/server";
+import { connectDB } from "@/lib/mongodb";
+import { Domain } from "@/models/Domain";
+import { LeaderboardService } from "@/lib/leaderboard";
 
 /**
  * GET /api/leaderboards/finals/[domainId]
@@ -9,7 +9,7 @@ import { LeaderboardService } from '@/lib/leaderboard';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ domainId: string }> }
+  { params }: { params: Promise<{ domainId: string }> },
 ) {
   try {
     await connectDB();
@@ -17,24 +17,32 @@ export async function GET(
 
     const domain = await Domain.findById(domainId);
     if (!domain || !domain.isActive) {
-      return NextResponse.json({ error: 'Domain not found' }, { status: 404 });
+      return NextResponse.json({ error: "Domain not found" }, { status: 404 });
     }
 
     const leaderboard = await LeaderboardService.getFinalsLeaderboard(domainId);
 
-    return NextResponse.json({
-      domain: {
-        id: domain._id,
-        name: domain.name,
-        description: domain.description
+    return NextResponse.json(
+      {
+        domain: {
+          id: domain._id,
+          name: domain.name,
+          description: domain.description,
+        },
+        round: "finals",
+        venue: "Seminar Hall",
+        leaderboard,
+        lastUpdated: new Date().toISOString(),
       },
-      round: 'finals',
-      venue: 'Seminar Hall',
-      leaderboard,
-      lastUpdated: new Date().toISOString()
-    });
+      {
+        headers: { "Cache-Control": "no-cache, no-store, must-revalidate" },
+      },
+    );
   } catch (error) {
-    console.error('Error fetching finals leaderboard:', error);
-    return NextResponse.json({ error: 'Failed to fetch finals leaderboard' }, { status: 500 });
+    console.error("Error fetching finals leaderboard:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch finals leaderboard" },
+      { status: 500 },
+    );
   }
 }
